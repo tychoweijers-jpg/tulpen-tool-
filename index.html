@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Tulpen Tool</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw/dist/leaflet.draw.css"/>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="panel">
+  <button onclick="saveData()">💾 Opslaan</button>
+  <input type="file" onchange="loadData(event)">
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw/dist/leaflet.draw.js"></script>
+<script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
+
+<script src="app.js"></script>
+
+</body>
+</html>
