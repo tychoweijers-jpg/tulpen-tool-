@@ -23,6 +23,15 @@
 <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
 
 <script src="app.js"></script>
-
+<!-- Edit paneel -->
+<div id="editPanel" style="display:none; position:absolute; top:10px; right:60px; background:white; padding:15px; border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,0.3); z-index:2000; width:220px;">
+  <h3 style="margin:0 0 10px 0; font-size:14px;">✏️ Bed bewerken</h3>
+  <label style="font-size:13px; display:block; margin-bottom:4px;">Naam tulp:</label>
+  <input id="editName" type="text" style="width:100%; padding:6px; margin-bottom:10px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
+  <label style="font-size:13px; display:block; margin-bottom:4px;">Kleur:</label>
+  <input id="editColor" type="color" style="width:100%; height:40px; margin-bottom:10px; border:1px solid #ccc; border-radius:6px; cursor:pointer;">
+  <button onclick="applyEdit()" style="width:100%; padding:8px; background:#2e7d32; color:white; border:none; border-radius:6px; cursor:pointer; margin-bottom:5px;">✅ Opslaan</button>
+  <button onclick="closeEditPanel()" style="width:100%; padding:8px; background:#aaa; color:white; border:none; border-radius:6px; cursor:pointer;">✖ Annuleren</button>
+</div>
 </body>
 </html>
