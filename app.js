@@ -1,24 +1,36 @@
 const map = L.map('map').setView([52.1, 5.1], 18);
 
-// Satelliet (gratis alternatief)
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 22
 }).addTo(map);
 
-const drawnItems = new L.FeatureGroup();
-map.addLayer(drawnItems);
+const drawnItems = new L.FeatureGroup().addTo(map);
+const bedLayer = new L.FeatureGroup().addTo(map);
 
-const bedLayer = new L.FeatureGroup();
-map.addLayer(bedLayer);
+let currentAngle = 0;
 
-// Draw control
+// UI knop voor richting
+const control = L.control({position: 'topright'});
+control.onAdd = function () {
+  const div = L.DomUtil.create('div', 'control');
+  div.innerHTML = `
+    <button onclick="rotateBeds(-5)">⟲</button>
+    <button onclick="rotateBeds(5)">⟳</button>
+    <div id="count"></div>
+  `;
+  return div;
+};
+control.addTo(map);
+
+
 const drawControl = new L.Control.Draw({
-  draw: { polygon: true, rectangle: false, circle: false },
+  draw: { polygon: true, rectangle: true, circle: false },
   edit: { featureGroup: drawnItems }
 });
 map.addControl(drawControl);
 
-// Wanneer veld getekend wordt
+
+// tekenen
 map.on(L.Draw.Event.CREATED, function (e) {
   drawnItems.clearLayers();
   bedLayer.clearLayers();
@@ -30,78 +42,129 @@ map.on(L.Draw.Event.CREATED, function (e) {
 });
 
 
-// 🔥 BEDDEN GENEREREN (ECHTE METERS)
+// 🔥 BEDDEN ALS VLAKKEN
 function generateBeds(layer) {
-  const polygon = layer.toGeoJSON();
 
+  bedLayer.clearLayers();
+
+  const polygon = layer.toGeoJSON();
   const bbox = turf.bbox(polygon);
 
-  const spacing = 1.5; // meters
+  const spacing = 1.5; // meter
 
-  const lines = [];
-
-  const length = turf.distance(
+  const diagonal = turf.distance(
     turf.point([bbox[0], bbox[1]]),
-    turf.point([bbox[2], bbox[1]]),
-    { units: 'meters' }
+    turf.point([bbox[2], bbox[3]]),
+    {units: 'meters'}
   );
 
-  const steps = Math.floor(length / spacing);
+  const steps = Math.floor(diagonal / spacing);
 
-  for (let i = 0; i < steps; i++) {
+  let count = 0;
 
-    const offset = i * spacing;
+  for (let i = -steps; i < steps; i++) {
 
-    let line = turf.lineOffset(
-      turf.lineString([
-        [bbox[0], bbox[1]],
-        [bbox[0], bbox[3]]
-      ]),
-      offset,
-      { units: 'meters' }
-    );
+    let baseLine = turf.lineString([
+      [bbox[0], bbox[1]],
+      [bbox[2], bbox[1]]
+    ]);
 
-    let clipped = turf.intersect(polygon, turf.buffer(line, 0.1, {units: 'meters'}));
+    baseLine = turf.transformRotate(baseLine, currentAngle, {
+      pivot: turf.centroid(polygon)
+    });
+
+    let offsetLine = turf.lineOffset(baseLine, i * spacing, {units: 'meters'});
+
+    // maak strook (rechthoek)
+    let bed = turf.buffer(offsetLine, spacing / 2, {units: 'meters'});
+
+    let clipped = turf.intersect(polygon, bed);
 
     if (clipped) {
-      let leafletLine = L.geoJSON(clipped, {
-        color: getRandomColor(),
-        weight: 3
+
+      count++;
+
+      const color = getRandomColor();
+
+      let layerBed = L.geoJSON(clipped, {
+        style: {
+          color: "#333",
+          weight: 1,
+          fillColor: color,
+          fillOpacity: 0.6
+        }
       }).addTo(bedLayer);
 
-      leafletLine.feature.properties = {
-        name: "Onbekend"
+      layerBed.feature = {
+        properties: {
+          name: "Bed " + count,
+          color: color
+        }
       };
 
-      leafletLine.on('click', function () {
+      // label tonen
+      const center = turf.centroid(clipped).geometry.coordinates;
+
+      let label = L.marker([center[1], center[0]], {
+        icon: L.divIcon({
+          className: 'label',
+          html: layerBed.feature.properties.name
+        })
+      }).addTo(bedLayer);
+
+      // klik = aanpassen
+      layerBed.on('click', function () {
+
         let name = prompt("Naam tulp:", this.feature.properties.name);
+        let newColor = prompt("Kleur (#ff0000):", this.feature.properties.color);
+
         if (name) {
           this.feature.properties.name = name;
-          this.bindPopup(name).openPopup();
+          label.setIcon(L.divIcon({
+            className: 'label',
+            html: name
+          }));
+        }
+
+        if (newColor) {
+          this.feature.properties.color = newColor;
+          this.setStyle({fillColor: newColor});
         }
       });
     }
   }
+
+  document.getElementById("count").innerText = "Bedden: " + count;
 }
 
-// 🎨 random kleur
+
+// 🔄 draaien
+function rotateBeds(deg) {
+  currentAngle += deg;
+
+  const field = drawnItems.getLayers()[0];
+  if (field) generateBeds(field);
+}
+
+
+// kleur
 function getRandomColor() {
   return "#" + Math.floor(Math.random()*16777215).toString(16);
 }
 
 
-// 💾 OPSLAAN
+// 💾 save
 function saveData() {
   const data = bedLayer.toGeoJSON();
   const blob = new Blob([JSON.stringify(data)], {type: "application/json"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "veld.json";
+  a.download = "velden.json";
   a.click();
 }
 
 
-// 📂 LADEN
+// 📂 load
 function loadData(event) {
   const file = event.target.files[0];
   const reader = new FileReader();
@@ -111,13 +174,35 @@ function loadData(event) {
     bedLayer.clearLayers();
 
     L.geoJSON(data, {
-      style: f => ({ color: f.properties.color || 'red' }),
+      style: f => ({
+        color: "#333",
+        fillColor: f.properties.color,
+        fillOpacity: 0.6
+      }),
       onEachFeature: (feature, layer) => {
+
+        const center = turf.centroid(feature).geometry.coordinates;
+
+        let label = L.marker([center[1], center[0]], {
+          icon: L.divIcon({
+            className: 'label',
+            html: feature.properties.name
+          })
+        }).addTo(bedLayer);
+
         layer.on('click', function () {
-          let name = prompt("Naam tulp:", feature.properties.name);
+
+          let name = prompt("Naam:", feature.properties.name);
+          let color = prompt("Kleur:", feature.properties.color);
+
           if (name) {
             feature.properties.name = name;
-            layer.bindPopup(name).openPopup();
+            label.setIcon(L.divIcon({className: 'label', html: name}));
+          }
+
+          if (color) {
+            feature.properties.color = color;
+            layer.setStyle({fillColor: color});
           }
         });
       }
