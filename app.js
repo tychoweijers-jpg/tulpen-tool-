@@ -8,20 +8,20 @@ const drawnItems = new L.FeatureGroup().addTo(map);
 const bedLayer = new L.FeatureGroup().addTo(map);
 
 let currentAngle = 0;
+let activeBedLayer = null;
+let activeLabelMarker = null;
 
-// UI knop voor richting
+// Richting control
 const control = L.control({position: 'topright'});
 control.onAdd = function () {
   const div = L.DomUtil.create('div', 'control');
   div.innerHTML = `
-    <button onclick="rotateBeds(-5)">⟲</button>
-    <button onclick="rotateBeds(5)">⟳</button>
-    <div id="count"></div>
+    <button onclick="rotateBeds(-5)">⟲ Links</button>
+    <button onclick="rotateBeds(5)">⟳ Rechts</button>
   `;
   return div;
 };
 control.addTo(map);
-
 
 const drawControl = new L.Control.Draw({
   draw: { polygon: true, rectangle: true, circle: false },
@@ -29,28 +29,21 @@ const drawControl = new L.Control.Draw({
 });
 map.addControl(drawControl);
 
-
-// tekenen
 map.on(L.Draw.Event.CREATED, function (e) {
   drawnItems.clearLayers();
   bedLayer.clearLayers();
-
   const layer = e.layer;
   drawnItems.addLayer(layer);
-
   generateBeds(layer);
 });
 
-
-// 🔥 BEDDEN ALS VLAKKEN
 function generateBeds(layer) {
-
   bedLayer.clearLayers();
+  closeEditPanel();
 
   const polygon = layer.toGeoJSON();
   const bbox = turf.bbox(polygon);
-
-  const spacing = 1.5; // meter
+  const spacing = 1.5;
 
   const diagonal = turf.distance(
     turf.point([bbox[0], bbox[1]]),
@@ -59,11 +52,9 @@ function generateBeds(layer) {
   );
 
   const steps = Math.floor(diagonal / spacing);
-
   let count = 0;
 
   for (let i = -steps; i < steps; i++) {
-
     let baseLine = turf.lineString([
       [bbox[0], bbox[1]],
       [bbox[2], bbox[1]]
@@ -74,16 +65,11 @@ function generateBeds(layer) {
     });
 
     let offsetLine = turf.lineOffset(baseLine, i * spacing, {units: 'meters'});
-
-    // maak strook (rechthoek)
     let bed = turf.buffer(offsetLine, spacing / 2, {units: 'meters'});
-
     let clipped = turf.intersect(polygon, bed);
 
     if (clipped) {
-
       count++;
-
       const color = getRandomColor();
 
       let layerBed = L.geoJSON(clipped, {
@@ -102,7 +88,6 @@ function generateBeds(layer) {
         }
       };
 
-      // label tonen
       const center = turf.centroid(clipped).geometry.coordinates;
 
       let label = L.marker([center[1], center[0]], {
@@ -112,24 +97,8 @@ function generateBeds(layer) {
         })
       }).addTo(bedLayer);
 
-      // klik = aanpassen
       layerBed.on('click', function () {
-
-        let name = prompt("Naam tulp:", this.feature.properties.name);
-        let newColor = prompt("Kleur (#ff0000):", this.feature.properties.color);
-
-        if (name) {
-          this.feature.properties.name = name;
-          label.setIcon(L.divIcon({
-            className: 'label',
-            html: name
-          }));
-        }
-
-        if (newColor) {
-          this.feature.properties.color = newColor;
-          this.setStyle({fillColor: newColor});
-        }
+        openEditPanel(this, label);
       });
     }
   }
@@ -137,23 +106,53 @@ function generateBeds(layer) {
   document.getElementById("count").innerText = "Bedden: " + count;
 }
 
+function openEditPanel(bedLayer, labelMarker) {
+  activeBedLayer = bedLayer;
+  activeLabelMarker = labelMarker;
 
-// 🔄 draaien
+  const props = bedLayer.feature.properties;
+  document.getElementById('editName').value = props.name;
+  document.getElementById('editColor').value = props.color;
+  document.getElementById('editPanel').style.display = 'block';
+}
+
+function closeEditPanel() {
+  document.getElementById('editPanel').style.display = 'none';
+  activeBedLayer = null;
+  activeLabelMarker = null;
+}
+
+function applyEdit() {
+  if (!activeBedLayer) return;
+
+  const name = document.getElementById('editName').value;
+  const color = document.getElementById('editColor').value;
+
+  activeBedLayer.feature.properties.name = name;
+  activeBedLayer.feature.properties.color = color;
+
+  activeBedLayer.setStyle({ fillColor: color });
+
+  activeLabelMarker.setIcon(L.divIcon({
+    className: 'label',
+    html: name,
+    style: `background:${color}`
+  }));
+
+  closeEditPanel();
+}
+
 function rotateBeds(deg) {
   currentAngle += deg;
-
   const field = drawnItems.getLayers()[0];
   if (field) generateBeds(field);
 }
 
-
-// kleur
 function getRandomColor() {
-  return "#" + Math.floor(Math.random()*16777215).toString(16);
+  const colors = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#e91e63','#00bcd4','#8bc34a'];
+  return colors[Math.floor(Math.random() * colors.length)];
 }
 
-
-// 💾 save
 function saveData() {
   const data = bedLayer.toGeoJSON();
   const blob = new Blob([JSON.stringify(data)], {type: "application/json"});
@@ -163,8 +162,6 @@ function saveData() {
   a.click();
 }
 
-
-// 📂 load
 function loadData(event) {
   const file = event.target.files[0];
   const reader = new FileReader();
@@ -180,7 +177,6 @@ function loadData(event) {
         fillOpacity: 0.6
       }),
       onEachFeature: (feature, layer) => {
-
         const center = turf.centroid(feature).geometry.coordinates;
 
         let label = L.marker([center[1], center[0]], {
@@ -190,20 +186,9 @@ function loadData(event) {
           })
         }).addTo(bedLayer);
 
+        layer.feature = feature;
         layer.on('click', function () {
-
-          let name = prompt("Naam:", feature.properties.name);
-          let color = prompt("Kleur:", feature.properties.color);
-
-          if (name) {
-            feature.properties.name = name;
-            label.setIcon(L.divIcon({className: 'label', html: name}));
-          }
-
-          if (color) {
-            feature.properties.color = color;
-            layer.setStyle({fillColor: color});
-          }
+          openEditPanel(this, label);
         });
       }
     }).addTo(bedLayer);
